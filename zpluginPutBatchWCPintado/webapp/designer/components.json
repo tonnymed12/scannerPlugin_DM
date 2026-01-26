@@ -1,0 +1,15 @@
+{
+	"components": [
+		{
+			"id": "zpluginPutBatchWCPintado",
+			"type": "VIEW_PLUGIN",
+			"allowMultipleInstances": false,
+			"name": "serviacero.custom.plugins.zpluginPutBatchWCPintado.zpluginPutBatchWCPintado",
+			"propertyEditor": "serviacero.custom.plugins.zpluginPutBatchWCPintado.zpluginPutBatchWCPintado.builder.PropertyEditor",
+			"i18n": "serviacero.custom.plugins.zpluginPutBatchWCPintado.zpluginPutBatchWCPintado.i18n.i18n",
+            "productionProcessEnabled": true,
+           "productionProcessTitle": "zpluginPutBatchWCPintado",
+			"supportedPodTypes": ["WORK_CENTER","OPERATION","ORDER","OTHER"]
+		}   
+	]
+}

@@ -1,0 +1,14 @@
+{
+  "welcomeFile": "/zpluginPutBatchWCPintado/index.html",
+  "authenticationMethod": "none",
+  "logout": {
+    "logoutEndpoint": "/do/logout"
+  },
+  "routes": [
+    {
+      "source": "^/zpluginPutBatchWCPintado/(.*)$",
+      "target": "$1",
+      "localDir": "webapp"
+    }
+  ]
+}
