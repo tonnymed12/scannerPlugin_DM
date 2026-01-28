@@ -20,9 +20,20 @@ height="100%">
         backgroundDesign="Transparent"
         class="sapUiNoContentPadding">
 
-       <!-- No se muestra en pantalla -->
+            <HBox width="80%" class="sapUiSmallMarginBottom sapUiSmallMarginBeginEnd" >
+                <VBox width="40%" class="sapUiSmallMarginEnd">
+                        <Button id="inicioEscaneo" text="{i18n>inicioCarga}" press=".onInicioEscaneo" 
+                        width="auto" class="sapUiSmallMarginBeginEnd sapUiSmallMarginTop" icon="sap-icon://clear-all" type="Accept"/>
+                </VBox>
+                <VBox width="40%">
+                    <Label text="{i18n>noCarga}" class="sapUiSmallMarginBottom sapUiSmallMarginTop"/>
+                    <Input id="noCarga" enabled="false" width="100%" class="sapUiSmallMarginBottom"/>
+                </VBox>
+            </HBox>
+
+
             <!-- Inputs agrupados en un HBox para alinearlos horizontalmente -->
-            <HBox id="quitar" width="80%" class="sapUiSmallMarginBottom sapUiSmallMarginBeginEnd" visible="false">
+            <HBox width="80%" class="sapUiSmallMarginBottom sapUiSmallMarginBeginEnd" >
                 <VBox width="40%" class="sapUiSmallMarginEnd">
                     <Label text="{i18n>quantity}" class="sapUiSmallMarginBottom sapUiSmallMarginTop"/>
                     <Input id="slotQty" enabled="false" width="100%" class="sapUiSmallMarginBottom"/>
