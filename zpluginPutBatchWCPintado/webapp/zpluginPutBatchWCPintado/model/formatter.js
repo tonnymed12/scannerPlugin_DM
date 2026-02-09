@@ -1,12 +1,9 @@
 sap.ui.define([
-	"sap/ui/base/ManagedObject"
-], function(
-	ManagedObject
-) {
-	"use strict";
-
-	return ManagedObject.extend("serviacero.custom.plugins.zpluginPutBatchWCPintado.zpluginPutBatchWCPintado.model.formatter", {
-         /**
+    "../controller/Utils/Commons"
+], function (Commons) {
+    "use strict";
+    return {
+        /**
          * Extrae el material del valor completo (antes del !)
          * @param {string} sValue - Valor en formato "material!lote"
          * @returns {string} - Solo el material
@@ -21,7 +18,7 @@ sap.ui.define([
 
         /**
          * Extrae el lote del valor completo (después del !)
-         * @param {string} sValue - Valor en formato "material!lote"
+         * @param {string} sValue - Valor en formato "material!lote!secuenia"
          * @returns {string} - Solo el lote
          */
         getLote: function (sValue) {
@@ -30,6 +27,18 @@ sap.ui.define([
             }
             const aParts = sValue.split('!');
             return aParts[1] || "";
+        },
+        /**
+         * Extrae el numero de carga del valor completo (después del segundo !)
+         * @param {string} sValue - Valor en formato "material!lote!secuencia"
+         * @returns {string} - Solo la secuencia/carga
+         */
+        getSecuencia: function (sValue) {
+            if (!sValue || typeof sValue !== 'string') {
+                return "";
+            }
+            const aParts = sValue.split('!');
+            return aParts[2] || "";
         }
-	});
+    };
 });

@@ -6,8 +6,12 @@ sap.ui.define([
     "./Utils/ApiPaths",
     "../model/formatter",
     "sap/ui/core/Element",
-    "sap/m/MessageBox"
-], function (jQuery, PluginViewController, JSONModel, Commons, ApiPaths, formatter, Element, MessageBox) {
+    "sap/m/MessageBox",
+    "sap/m/Dialog",
+    "sap/m/Input",
+    "sap/m/Button",
+    "sap/ui/core/library"
+], function (jQuery, PluginViewController, JSONModel, Commons, ApiPaths, formatter, Element, MessageBox, Dialog, Input, Button, CoreLibrary) {
     "use strict";
 
     return PluginViewController.extend("serviacero.custom.plugins.zpluginPutBatchWCPintado.zpluginPutBatchWCPintado.controller.MainView", {
@@ -22,17 +26,18 @@ sap.ui.define([
 
         onAfterRendering: function () {
             const oView = this.getView(),
-                oSapApi = this.Commons.getSapApiPath(this),
+                oSapApi = this.getPublicApiRestDataSourceUri(),
+                url = oSapApi + this.ApiPaths.WORKCENTERS,
                 oTable = oView.byId("idSlotTable"),
                 oPODParams = this.Commons.getPODParams(this.getOwnerComponent()),
-
-                sUri = oSapApi + this.ApiPaths.WORKCENTERS,
 
                 oParams = {
                     plant: oPODParams.PLANT_ID,
                     workCenter: oPODParams.WORK_CENTER
                 };
-            this.Commons.consumeApi(sUri, "GET", oParams, function (oRes) {
+
+
+            this.ajaxGetRequest(url, oParams, function (oRes) {
                 // Tomamos el primer objeto del array
                 const oData = Array.isArray(oRes) ? oRes[0] : oRes;
 
@@ -43,8 +48,9 @@ sap.ui.define([
 
                 const aCustomValues = oData.customValues;
 
-                const cantidadSlot = aCustomValues.find((element) => element.attribute == "SLOTQTY");
-                const tipoSlot = aCustomValues.find((element) => element.attribute == "SLOTTIPO");
+                const cantidadSlot = aCustomValues.find((element) => element.attribute === "SLOTQTY") || { value: "0" };
+                const tipoSlot = aCustomValues.find((element) => element.attribute === "SLOTTIPO") || { value: "" };
+                const noCargaSlot = aCustomValues.find((element) => element.attribute === "NO_CARGA") || { value: "0" };
                 const aSlots = aCustomValues.filter(item =>
                     item.attribute.startsWith("SLOT") &&
                     item.attribute !== "SLOTQTY" &&
@@ -52,7 +58,7 @@ sap.ui.define([
                 );
 
                 //  Rellenar slots faltantes según SLOTQTY
-                const iSlotQty = parseInt(cantidadSlot?.value || "0", 10);
+                const iSlotQty = parseInt(cantidadSlot.value || "0", 10);
                 let aSlotsFixed = [...aSlots];
 
                 // Caso 1 :hay más slots con valor que los permitidos -> eliminar y actualizar en vacio
@@ -93,10 +99,189 @@ sap.ui.define([
                 oTable.setModel(new sap.ui.model.json.JSONModel({ ITEMS: aSlotsFixed }));
 
                 // Setear los valores en los inputs
-                oView.byId("slotQty").setValue(cantidadSlot.value);
-                oView.byId("slotType").setValue(tipoSlot.value);
+                oView.byId("noCarga").setValue(noCargaSlot.value || "0");
+                oView.byId("slotQty").setValue(cantidadSlot.value || "0");
+                oView.byId("slotType").setValue(tipoSlot.value || "");
+
+                // Actualizar indicador de progreso
+                this._updateProgressIndicator();
 
             }.bind(this));
+        },
+        /**
+        * Funcion del boton "inicioCarga" - Abre diálogo para ingresar cantidad de lotes para la nueva carga
+        * @returns {void}
+        */
+        onInicioEscaneo: function () {
+            const oView = this.getView(),
+                oBundle = oView.getModel("i18n").getResourceBundle();
+
+            // Validar que la carga actual esté completa antes de iniciar una nueva
+            const oTable = oView.byId("idSlotTable");
+            const oModel = oTable.getModel();
+            const aItems = oModel ? oModel.getProperty("/ITEMS") : [];
+            const iSlotQty = parseInt(oView.byId("slotQty").getValue() || "0", 10);
+
+            // Contar slots con valor (escaneados)
+            const iEscaneados = aItems.filter(slot => slot.value && slot.value.trim() !== "").length;
+
+            // Validar que estén completos (solo si SLOTQTY > 0, es decir, hay una carga activa)
+            if (iSlotQty > 0 && iEscaneados < iSlotQty) {
+                const iFaltantes = iSlotQty - iEscaneados;
+                sap.m.MessageBox.warning(
+                    oBundle.getText("cargaIncompleta", [iEscaneados, iSlotQty, iFaltantes]) || 
+                    `La carga actual no está completa.\nEscaneados: ${iEscaneados}/${iSlotQty}\nFaltan ${iFaltantes} lote(s) por escanear.`,
+                    {
+                        title: oBundle.getText("cargaIncompletaTitle") || "Carga Incompleta"
+                    }
+                );
+                return;
+            }
+
+            // Crear input para la cantidad
+            const oQuantityInput = new Input({
+                type: "Number",
+                placeholder: oBundle.getText("cantidadPlaceholder") || "Ej: 35",
+                liveChange: function (oEvent) {
+                    const iValue = parseInt(oEvent.getSource().getValue(), 10);
+                    oOkButton.setEnabled(iValue > 0);
+                }
+            });
+
+            // boton confirmacion OK 
+            const oOkButton = new Button({
+                text: oBundle.getText("okButton") || "OK",
+                enabled: false,
+                press: function () {
+                    const iCantidad = parseInt(oQuantityInput.getValue(), 10);
+                    if (iCantidad > 0) {
+                        oDialog.close();
+                        this._iniciarNuevaCarga(iCantidad);
+                    } else {
+                        sap.m.MessageToast.show(oBundle.getText("cantidadInvalida") || "Ingrese una cantidad válida");
+                    }
+                }.bind(this)
+            });
+
+            // Botón Cancel
+            const oCancelButton = new Button({
+                text: oBundle.getText("cancelButton") || "Cancelar",
+                type: "Reject",
+                press: function () {
+                    oDialog.close();
+                }
+            });
+
+            // Crear diálogo
+            const oDialog = new Dialog({
+                title: oBundle.getText("iniciarCargaDialogTitle") || "Iniciar Nueva Carga",
+                content: [
+                    oQuantityInput
+                ],
+                buttons: [oOkButton, oCancelButton],
+                afterClose: function () {
+                    oDialog.destroy();
+                }
+            });
+
+            oDialog.open();
+            oQuantityInput.focus();
+        },
+        /**
+        * Finalizar carga: ajustar SLOTQTY al número real escaneado
+        * @returns {void}
+        */
+        onFinalizarCarga: function () {
+            const oView = this.getView(),
+                oBundle = oView.getModel("i18n").getResourceBundle(),
+                oPODParams = this.Commons.getPODParams(this.getOwnerComponent()),
+                oSapApi = this.getPublicApiRestDataSourceUri();
+
+            const oTable = oView.byId("idSlotTable");
+            const oModel = oTable.getModel();
+            const aItems = oModel ? oModel.getProperty("/ITEMS") : [];
+            const iSlotQty = parseInt(oView.byId("slotQty").getValue() || "0", 10);
+            const iEscaneados = aItems.filter(slot => slot.value && slot.value.trim() !== "").length;
+            const sNoCarga = oView.byId("noCarga").getValue() || "0";
+
+            if (iSlotQty <= 0) {
+                sap.m.MessageToast.show(oBundle.getText("finalizarCargaSinCarga") || "No hay una carga activa.");
+                return;
+            }
+
+            if (iEscaneados === 0) {
+                sap.m.MessageBox.warning(
+                    oBundle.getText("finalizarCargaSinLotes") || "No hay lotes escaneados para finalizar.",
+                    { title: oBundle.getText("finalizarCargaTitulo") || "Finalizar Carga" }
+                );
+                return;
+            }
+
+            oView.byId("idPluginPanel").setBusy(true);
+
+            const sParams = {
+                plant: oPODParams.PLANT_ID,
+                workCenter: oPODParams.WORK_CENTER
+            };
+
+            // Traer custom values actuales
+            this.getWorkCenterCustomValues(sParams, oSapApi).then(oCurrentRes => {
+                const oData = Array.isArray(oCurrentRes) ? oCurrentRes[0] : oCurrentRes;
+                if (!oData) {
+                    oView.byId("idPluginPanel").setBusy(false);
+                    sap.m.MessageToast.show(oBundle.getText("errorObtenerDatos") || "Error al obtener datos");
+                    return;
+                }
+
+                const aCurrentCV = oData.customValues || [];
+                const aEdited = [
+                    { attribute: "SLOTQTY", value: iEscaneados.toString() }
+                ];
+
+                const aEditMap = {};
+                aEdited.forEach(item => {
+                    aEditMap[item.attribute] = item.value;
+                });
+
+                const aCustomValuesFinal = aCurrentCV.map(item => ({
+                    attribute: item.attribute,
+                    value: aEditMap.hasOwnProperty(item.attribute) ? aEditMap[item.attribute] : item.value
+                }));
+
+                for (const key in aEditMap) {
+                    if (!aCustomValuesFinal.find(i => i.attribute === key)) {
+                        aCustomValuesFinal.push({ attribute: key, value: aEditMap[key] });
+                    }
+                }
+
+                this.setCustomValuesPp({
+                    inCustomValues: aCustomValuesFinal,
+                    inPlant: oPODParams.PLANT_ID,
+                    inWorkCenter: oPODParams.WORK_CENTER
+                }, oSapApi).then(() => {
+                    oView.byId("idPluginPanel").setBusy(false);
+
+                    // Actualizar UI
+                    oView.byId("slotQty").setValue(iEscaneados.toString());
+                    this._updateProgressIndicator();
+
+                    sap.m.MessageBox.success(
+                        oBundle.getText("finalizarCargaMensaje", [sNoCarga, iEscaneados, iSlotQty]) ||
+                        `Carga #${sNoCarga} finalizada.\nEscaneados: ${iEscaneados}/${iSlotQty}`,
+                        { title: oBundle.getText("finalizarCargaTitulo") || "Finalizar Carga" }
+                    );
+
+                    setTimeout(() => {
+                        this.onAfterRendering();
+                    }, 500);
+                }).catch(() => {
+                    oView.byId("idPluginPanel").setBusy(false);
+                    sap.m.MessageToast.show(oBundle.getText("errorFinalizarCarga") || "Error al finalizar carga");
+                });
+            }).catch(() => {
+                oView.byId("idPluginPanel").setBusy(false);
+                sap.m.MessageToast.show(oBundle.getText("errorObtenerDatos") || "Error al obtener datos");
+            });
         },
         onBarcodeSubmit: function () {
             const oView = this.getView();
@@ -135,6 +320,10 @@ sap.ui.define([
             this._validarMaterialYLote(loteExtraido, materialExtraido);
 
         },
+        /**
+        * Funcion del boton "clear" con fragmento de confirmacion para limpiar la tabla y actualizar los customValues  
+        * @returns {string} - funcion clearModel
+        */
         onPressClear: function () {
             const oView = this.getView(),
                 oResBun = oView.getModel("i18n").getResourceBundle();
@@ -162,7 +351,7 @@ sap.ui.define([
                 item.value = "";  //se vacia solo el valor 
             });
 
-            //se acctualiza el modelo de la vista
+            //se actualiza el modelo de la vista
             oModel.setProperty("/ITEMS", aItems);
             oModel.refresh(true);
             oScanInput.setValue("");
@@ -171,15 +360,18 @@ sap.ui.define([
             //se prepara los datos para hacer el update 
             const slotTipo = oView.byId("slotType").getValue();
             const slotQty = oView.byId("slotQty").getValue();
+            const noCarga = oView.byId("noCarga").getValue();
 
             const aEdited = [
                 { attribute: "SLOTTIPO", value: slotTipo },
-                { attribute: "SLOTQTY", value: slotQty },
+                { attribute: "SLOTQTY", value: 0 },
+                { attribute: "NO_CARGA", value: 0 },
                 ...aItems.map(slot => ({ attribute: slot.attribute, value: slot.value }))
             ]
 
             // Llama a la API para obtener los originales
-            const oSapApi = this.Commons.getSapApiPath(this);
+            // const oSapApi = this.Commons.getSapApiPath(this);
+            const oSapApi = this.getPublicApiRestDataSourceUri();
             const sParams = {
                 plant: oPODParams.PLANT_ID,
                 workCenter: oPODParams.WORK_CENTER
@@ -212,7 +404,11 @@ sap.ui.define([
                     inWorkCenter: oPODParams.WORK_CENTER
                 }, oSapApi).then(() => {
                     sap.m.MessageToast.show(oBundle.getText("dataClearedSuccess"));
-                    // sap.m.MessageToast.show("Lote actualizado correctamente");
+                    
+                    // Esperar 500ms y recargar datos desde API
+                    setTimeout(() => {
+                        this.onAfterRendering();
+                    }, 500);
                 }).catch(() => {
                     sap.m.MessageToast.show(oBundle.getText("errorClearing"));
                     // En caso de error, recargar los datos originales
@@ -238,7 +434,7 @@ sap.ui.define([
             const loteEscaneado = sLote;
             const materialEscaneado = sMaterial;
 
-            // validacion de material
+            // validacion de material PRIMERO SE HACE LA DEL MATERIAL
             const urlMaterial = this.getPublicApiRestDataSourceUri() + this.ApiPaths.validateMaterialEnOrden;
             var inParamsMaterial = {
                 "inPlanta": oPODParams.PLANT_ID,
@@ -263,7 +459,7 @@ sap.ui.define([
                         return;
                     }
 
-                    //Validacion de lotes  
+                    //Validacion de lotes  DESPUES DE LA DEL MATERIAL
                     var urlLote = this.getPublicApiRestDataSourceUri() + this.ApiPaths.getReservas;
                     var inParamsLote = {
                         "inPlanta": oPODParams.PLANT_ID,
@@ -363,8 +559,13 @@ sap.ui.define([
             const oEmptySlot = aItems.find(item => !item.value || item.value === "");
 
             if (oEmptySlot) {
-                oEmptySlot.value = sBarcode; // asignar valor
+                // Obtener noCarga del input y concatenar al barcode
+                const sNoCarga = oView.byId("noCarga").getValue() || "";
+                const sBarcodeConSecuencia = sNoCarga ? sBarcode + "!" + sNoCarga : sBarcode;
+                
+                oEmptySlot.value = sBarcodeConSecuencia; // asignar valor con secuencia
                 oModel.refresh(true);        // refrescar la tabla
+                this._updateProgressIndicator(); // actualizar indicador de progreso
             } else {
                 sap.m.MessageToast.show(oBundle.getText("sinLotes"));
                 return;
@@ -385,7 +586,8 @@ sap.ui.define([
                 ...aItems.map(slot => ({ attribute: slot.attribute, value: slot.value }))
             ];
 
-            const oSapApi = this.Commons.getSapApiPath(this);
+            // const oSapApi = this.Commons.getSapApiPath(this);
+            const oSapApi = this.getPublicApiRestDataSourceUri();
             const sParams = { plant: oPODParams.PLANT_ID, workCenter: oPODParams.WORK_CENTER };
 
             // trae los customValues originales
@@ -415,6 +617,9 @@ sap.ui.define([
                     inWorkCenter: oPODParams.WORK_CENTER
                 }, oSapApi).then(() => {
                     sap.m.MessageToast.show(oBundle.getText("slotActualizado"));
+
+                    // Verificar si la carga está completa
+                    this._checkCargaCompleta();
 
                     // sap.m.MessageToast.show("Slot actualizado correctamente");
                 }).catch(() => {
@@ -468,6 +673,7 @@ sap.ui.define([
             // Actualiza el modelo
             oModel.setProperty("/ITEMS", aSlots);
             oModel.refresh(true);
+            this._updateProgressIndicator(); // actualizar indicador de progreso
 
             sap.m.MessageToast.show(oBundle.getText("loteEliminado"));
             // sap.m.MessageToast.show("Lote eliminado correctamente");
@@ -482,7 +688,8 @@ sap.ui.define([
                 ...aSlots.map(slot => ({ attribute: slot.attribute, value: slot.value }))
             ];
 
-            const oSapApi = this.Commons.getSapApiPath(this);
+            // const oSapApi = this.Commons.getSapApiPath(this);
+            const oSapApi = this.getPublicApiRestDataSourceUri();
             const sParams = { plant: oPODParams.PLANT_ID, workCenter: oPODParams.WORK_CENTER };
 
             this.getWorkCenterCustomValues(sParams, oSapApi).then(oOriginalRes => {
@@ -591,13 +798,18 @@ sap.ui.define([
                 return;
             }
 
-            // asigna el código escaneado al slot correspondiente
-            aSlots[iIndex].value = sBarcode;
+            // Obtener noCarga del input y concatenar al barcode
+            const oView = this.getView();
+            const sNoCarga = oView.byId("noCarga").getValue() || "";
+            const sBarcodeConSecuencia = sNoCarga ? sBarcode + "!" + sNoCarga : sBarcode;
+
+            // asigna el código escaneado con secuencia al slot correspondiente
+            aSlots[iIndex].value = sBarcodeConSecuencia;
             oModel.setProperty("/ITEMS", aSlots);
             oModel.refresh(true);
+            this._updateProgressIndicator(); // actualizar indicador de progreso
 
             // Inputs
-            const oView = this.getView();
             const slotTipo = oView.byId("slotType").getValue();
             const slotQty = oView.byId("slotQty").getValue();
 
@@ -608,7 +820,8 @@ sap.ui.define([
                 ...aSlots.map(slot => ({ attribute: slot.attribute, value: slot.value }))
             ];
 
-            const oSapApi = this.Commons.getSapApiPath(this);
+            // const oSapApi = this.Commons.getSapApiPath(this);
+            const oSapApi = this.getPublicApiRestDataSourceUri();
             const sParams = { plant: oPODParams.PLANT_ID, workCenter: oPODParams.WORK_CENTER };
 
             // Traer originales y combinar
@@ -635,6 +848,9 @@ sap.ui.define([
                 }, oSapApi).then(() => {
                     sap.m.MessageToast.show(oBundle.getText("slotActualizado"));
                     this._slotContext = null;
+                    
+                    // Verificar si la carga está completa
+                    this._checkCargaCompleta();
                 }).catch(() => {
                     sap.m.MessageToast.show(oBundle.getText("errorActualizar"));
                     this._slotContext = null;
@@ -693,8 +909,9 @@ sap.ui.define([
         },
         getWorkCenterCustomValues: function (sParams, oSapApi) {
             return new Promise((resolve) => {
-                this.ajaxPostRequest(oSapApi + this.ApiPaths.WORKCENTERS, sParams, function (oRes) {
-                    resolve(oRes);
+                this.ajaxGetRequest(oSapApi + this.ApiPaths.WORKCENTERS, sParams, function (oRes) {
+                    const oData = Array.isArray(oRes) ? oRes[0] : oRes;
+                    resolve(oData);
                 }.bind(this),
                     function (oRes) {
                         // Error callback
@@ -715,7 +932,176 @@ sap.ui.define([
                     }.bind(this));
             });
         },
+        /**
+         * Iniciar nueva carga: Incrementar NOCARGA, crear SLOTQTY_CARGA{n}, actualizar UI
+         * @param {number} iCantidad - Cantidad de lotes a escanear en esta carga
+         */
+        _iniciarNuevaCarga: function (iCantidad) {
+            const oView = this.getView(),
+                oBundle = oView.getModel("i18n").getResourceBundle(),
+                oPODParams = this.Commons.getPODParams(this.getOwnerComponent()),
+                oSapApi = this.getPublicApiRestDataSourceUri();
 
+            oView.byId("idPluginPanel").setBusy(true);
+
+            const sParams = {
+                plant: oPODParams.PLANT_ID,
+                workCenter: oPODParams.WORK_CENTER
+            };
+
+            // Traer custom values actuales
+            this.getWorkCenterCustomValues(sParams, oSapApi).then(oCurrentRes => {
+                const oData = Array.isArray(oCurrentRes) ? oCurrentRes[0] : oCurrentRes;
+                if (!oData) {
+                    oView.byId("idPluginPanel").setBusy(false);
+                    sap.m.MessageToast.show(oBundle.getText("errorObtenerDatos") || "Error al obtener datos");
+                    return;
+                }
+                const aCurrentCV = oData.customValues || [];
+                let iNoCargaActual = 0;
+
+                // Buscar NO_CARGA actual (si no viene, asumir 0)
+                const oNoCargaCV = aCurrentCV.find(cv => cv.attribute === "NO_CARGA");
+                if (oNoCargaCV) {
+                    iNoCargaActual = parseInt(oNoCargaCV.value || "0", 10);
+                    if (Number.isNaN(iNoCargaActual)) {
+                        iNoCargaActual = 0;
+                    }
+                }
+
+                // Incrementar NO_CARGA
+                const iNuevaCarga = iNoCargaActual + 1;
+
+                // Editados: actualizar NO_CARGA y SLOTQTY con la cantidad ingresada
+                const aEdited = [
+                    { attribute: "NO_CARGA", value: iNuevaCarga.toString() },
+                    { attribute: "SLOTQTY", value: iCantidad.toString() }
+                ];
+
+                // Combinar originales + editados
+                const aEditMap = {};
+                aEdited.forEach(item => {
+                    aEditMap[item.attribute] = item.value;
+                });
+
+                const aCustomValuesFinal = aCurrentCV.map(item => ({
+                    attribute: item.attribute,
+                    value: aEditMap.hasOwnProperty(item.attribute) ? aEditMap[item.attribute] : item.value
+                }));
+
+                // Agregar nuevos atributos si no existían
+                for (const key in aEditMap) {
+                    if (!aCustomValuesFinal.find(i => i.attribute === key)) {
+                        aCustomValuesFinal.push({ attribute: key, value: aEditMap[key] });
+                    }
+                }
+
+                console.log("CVs finales para nueva carga:", aCustomValuesFinal);
+
+                // Llamar a API para actualizar
+                this.setCustomValuesPp({
+                    inCustomValues: aCustomValuesFinal,
+                    inPlant: oPODParams.PLANT_ID,
+                    inWorkCenter: oPODParams.WORK_CENTER
+                }, oSapApi).then(() => {
+                    oView.byId("idPluginPanel").setBusy(false);
+
+                    // Actualizar UI
+                    oView.byId("noCarga").setValue(iNuevaCarga.toString());
+                    oView.byId("slotQty").setValue(iCantidad.toString());
+
+                    // Guardar estado de carga actual en memoria
+                    this._cargaActual = {
+                        noCarga: iNuevaCarga,
+                        cantidad: iCantidad,
+                        escaneados: 0
+                    };
+
+                    sap.m.MessageToast.show(oBundle.getText("cargaInitSuccess") || ("Carga " + iNuevaCarga + " iniciada. Cantidad: " + iCantidad));
+
+                    // Esperar 500ms para que el backend procese completamente antes de recargar
+                    setTimeout(() => {
+                        this.onAfterRendering();
+                    }, 500);
+
+                }).catch(() => {
+                    oView.byId("idPluginPanel").setBusy(false);
+                    sap.m.MessageToast.show(oBundle.getText("errorInitCarga") || "Error al iniciar carga");
+                });
+            }).catch(() => {
+                oView.byId("idPluginPanel").setBusy(false);
+                sap.m.MessageToast.show(oBundle.getText("errorObtenerDatos") || "Error al obtener datos");
+            });
+        },
+
+
+        /**
+         * Actualizar indicador de progreso (contador y barra)
+         */
+        _updateProgressIndicator: function () {
+            const oView = this.getView();
+            const oTable = oView.byId("idSlotTable");
+            const oModel = oTable.getModel();
+            const aItems = oModel ? oModel.getProperty("/ITEMS") : [];
+            const iSlotQty = parseInt(oView.byId("slotQty").getValue() || "0", 10);
+
+            // Contar slots escaneados (con valor)
+            const iEscaneados = aItems.filter(slot => slot.value && slot.value.trim() !== "").length;
+
+            // Actualizar texto del contador
+            const oProgressCounter = oView.byId("progressCounter");
+            if (oProgressCounter) {
+                oProgressCounter.setText(iEscaneados + "/" + iSlotQty);
+            }
+
+            // Actualizar barra de progreso
+            const oProgressBar = oView.byId("progressBar");
+            if (oProgressBar && iSlotQty > 0) {
+                const iPercent = Math.round((iEscaneados / iSlotQty) * 100);
+                oProgressBar.setPercentValue(iPercent);
+                oProgressBar.setDisplayValue(iPercent + "%");
+
+                // Cambiar color según progreso
+                if (iEscaneados === 0) {
+                    oProgressBar.setState("None");
+                } else if (iEscaneados < iSlotQty) {
+                    oProgressBar.setState("Warning");
+                } else if (iEscaneados === iSlotQty) {
+                    oProgressBar.setState("Success");
+                }
+            } else if (oProgressBar) {
+                oProgressBar.setPercentValue(0);
+                oProgressBar.setDisplayValue("0%");
+                oProgressBar.setState("None");
+            }
+        },
+
+        /**
+         * Verificar si la carga está completa y mostrar mensaje de éxito
+         */
+        _checkCargaCompleta: function () {
+            const oView = this.getView();
+            const oTable = oView.byId("idSlotTable");
+            const oModel = oTable.getModel();
+            const aItems = oModel ? oModel.getProperty("/ITEMS") : [];
+            const iSlotQty = parseInt(oView.byId("slotQty").getValue() || "0", 10);
+            const sNoCarga = oView.byId("noCarga").getValue() || "0";
+            const oBundle = oView.getModel("i18n").getResourceBundle();
+
+            // Contar slots escaneados
+            const iEscaneados = aItems.filter(slot => slot.value && slot.value.trim() !== "").length;
+
+            // Si la carga está completa, mostrar mensaje de éxito
+            if (iSlotQty > 0 && iEscaneados === iSlotQty) {
+                sap.m.MessageBox.success(
+                    oBundle.getText("cargaCompletadaMensaje", [sNoCarga, iEscaneados, iSlotQty]) || 
+                    `Carga #${sNoCarga} completada exitosamente.\n${iEscaneados}/${iSlotQty} lotes escaneados.`,
+                    {
+                        title: oBundle.getText("cargaCompletadaTitulo") || "¡Carga Completa!"
+                    }
+                );
+            }
+        },
 
         onExit: function () {
             PluginViewController.prototype.onExit.apply(this, arguments);

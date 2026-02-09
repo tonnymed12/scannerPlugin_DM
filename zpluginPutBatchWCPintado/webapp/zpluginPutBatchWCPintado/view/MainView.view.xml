@@ -20,26 +20,41 @@ height="100%">
         backgroundDesign="Transparent"
         class="sapUiNoContentPadding">
 
-            <HBox width="80%" class="sapUiSmallMarginBottom sapUiSmallMarginBeginEnd" >
-                <VBox width="40%" class="sapUiSmallMarginEnd">
+                  <!--Encabezado de operaciones onInicioEscaneo- -->
+              <HBox width="auto" class="sapUiSmallMarginBottom sapUiSmallMarginBeginEnd" >
                         <Button id="inicioEscaneo" text="{i18n>inicioCarga}" press=".onInicioEscaneo" 
-                        width="auto" class="sapUiSmallMarginBeginEnd sapUiSmallMarginTop" icon="sap-icon://clear-all" type="Accept"/>
-                </VBox>
-                <VBox width="40%">
-                    <Label text="{i18n>noCarga}" class="sapUiSmallMarginBottom sapUiSmallMarginTop"/>
-                    <Input id="noCarga" enabled="false" width="100%" class="sapUiSmallMarginBottom"/>
-                </VBox>
-            </HBox>
+                        width="auto" class="sapUiSmallMarginBeginEnd sapUiSmallMarginTop" icon="sap-icon://cart-4" type="Accept"/>
+                        <Button id="finalizarCarga" text="{i18n>finalizarCarga}" press=".onFinalizarCarga"
+                        width="auto" class="sapUiSmallMarginBeginEnd sapUiSmallMarginTop" icon="sap-icon://complete" type="Emphasized"/>                
+              </HBox>
 
+            <!-- Indicador de Progreso de Carga -->
+            <VBox width="100%" class="sapUiSmallMarginBottom sapUiSmallMarginBeginEnd sapUiSmallMarginTop">
+                <HBox width="auto" alignItems="Center" class="sapUiSmallMarginBottom">
+                    <Text id="progressLabel" text="{i18n>progressLabel}" class="sapUiMediumMarginEnd" />
+                    <Text id="progressCounter" text="0/0" class="sapUiLargeMarginBeginEnd" />
+                </HBox>
+                <ProgressIndicator 
+                    id="progressBar"
+                    percentValue="0"
+                    displayValue="0%"
+                    width="100%"
+                    state="None"
+                    class="sapUiSmallMarginBeginEnd"
+                />
+            </VBox>
 
             <!-- Inputs agrupados en un HBox para alinearlos horizontalmente -->
-            <HBox width="80%" class="sapUiSmallMarginBottom sapUiSmallMarginBeginEnd" >
-                <VBox width="40%" class="sapUiSmallMarginEnd">
-                    <Label text="{i18n>quantity}" class="sapUiSmallMarginBottom sapUiSmallMarginTop"/>
-                    <Input id="slotQty" enabled="false" width="100%" class="sapUiSmallMarginBottom"/>
-                </VBox>
-                <VBox width="40%">
-                    <Label text="{i18n>slotType}" class="sapUiSmallMarginBottom sapUiSmallMarginTop"/>
+            <HBox width="auto" class="sapUiSmallMarginBottom sapUiSmallMarginBeginEnd" >
+        
+                    <Label text="{i18n>noCarga}" class="sapUiSmallMarginEnd sapUiSmallMarginTop" />
+                    <Input id="noCarga" enabled="false" width="100%" class="sapUiSmallMarginBottom sapUiSmallMarginTop"/>
+               
+                    <Label text="{i18n>quantity}" class="sapUiSmallMarginEnd sapUiSmallMarginTop sapUiSmallMarginBeginEnd" />
+                    <Input id="slotQty" enabled="false" width="100%" class="sapUiSmallMarginBottom sapUiSmallMarginBeginEnd sapUiSmallMarginTop"/>
+                
+                <VBox width="40%" visible="false">
+                    <Label text="{i18n>slotType}" class="sapUiSmallMarginBottom sapUiSmallMarginTop sapUiSmallMarginBeginEnd"/>
                     <Input id="slotType" enabled="false" width="100%" class="sapUiSmallMarginBottom"/>
                 </VBox>
             </HBox>
@@ -85,6 +100,9 @@ height="100%">
                     <Column width="30%" hAlign="Left" vAlign="Middle" >
                         <Text text="{i18n>loteCode}"  />
                     </Column>
+                    <Column width="30%" hAlign="Left" vAlign="Middle" >
+                        <Text text="{i18n>secuenciaCode}" />
+                    </Column>
                     <Column width="60%" hAlign="Left" vAlign="Middle">
                         <Text text="{i18n>Value}" visible="false" />
                     </Column>
@@ -101,6 +119,7 @@ height="100%">
                             <Text text="{attribute}" />
                             <Input value="{path: 'value', formatter: '.formatter.getMaterial'}" enabled="false" />
                             <Input value="{path: 'value', formatter: '.formatter.getLote'}" enabled="false" />
+                            <Input value="{path: 'value', formatter: '.formatter.getSecuencia'}" enabled="false" />
                             <Input value="{value}" enabled="false" visible="false"/>
                             <ndc:BarcodeScannerButton 
                                 icon="sap-icon://bar-code" 
