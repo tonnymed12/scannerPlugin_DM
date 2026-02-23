@@ -25,6 +25,8 @@ sap.ui.define([],
         //  Searches for work centers by plant and work center values
         WORKCENTERS : "workcenter/v2/workcenters",
 
+        //Retrieves detailed data like order header, SFC list, associated custom data for the given plant and order.
+        CHARACHTERISTICS: "/order/v1/orders",
 
 
         /** API CONSUMPTION TYPE : PUT  */

@@ -14,6 +14,9 @@ sap.ui.define([
 ], function (jQuery, PluginViewController, JSONModel, Commons, ApiPaths, formatter, Element, MessageBox, Dialog, Input, Button, CoreLibrary) {
     "use strict";
 
+    var gOperationPhase = {};
+    const OPERATION_STATUS = { ACTIVE: "ACTIVE", QUEUED: "IN_QUEUE" }
+
     return PluginViewController.extend("serviacero.custom.plugins.zpluginPutBatchWCPintado.zpluginPutBatchWCPintado.controller.MainView", {
         Commons: Commons,
         ApiPaths: ApiPaths,
@@ -25,6 +28,10 @@ sap.ui.define([
         },
 
         onAfterRendering: function () {
+            this.onGetCustomValues();
+            this.onGetOrderCustomValues();
+        },
+        onGetCustomValues: function () {
             const oView = this.getView(),
                 oSapApi = this.getPublicApiRestDataSourceUri(),
                 url = oSapApi + this.ApiPaths.WORKCENTERS,
@@ -122,14 +129,20 @@ sap.ui.define([
             const aItems = oModel ? oModel.getProperty("/ITEMS") : [];
             const iSlotQty = parseInt(oView.byId("slotQty").getValue() || "0", 10);
 
+            if (gOperationPhase.status !== OPERATION_STATUS.ACTIVE) {
+                sap.m.MessageBox.error(oBundle.getText("verificarStatusOperacion"))
+                return;
+            }
+
             // Contar slots con valor (escaneados)
             const iEscaneados = aItems.filter(slot => slot.value && slot.value.trim() !== "").length;
+
 
             // Validar que estén completos (solo si SLOTQTY > 0, es decir, hay una carga activa)
             if (iSlotQty > 0 && iEscaneados < iSlotQty) {
                 const iFaltantes = iSlotQty - iEscaneados;
                 sap.m.MessageBox.warning(
-                    oBundle.getText("cargaIncompleta", [iEscaneados, iSlotQty, iFaltantes]) || 
+                    oBundle.getText("cargaIncompleta", [iEscaneados, iSlotQty, iFaltantes]) ||
                     `La carga actual no está completa.\nEscaneados: ${iEscaneados}/${iSlotQty}\nFaltan ${iFaltantes} lote(s) por escanear.`,
                     {
                         title: oBundle.getText("cargaIncompletaTitle") || "Carga Incompleta"
@@ -272,7 +285,7 @@ sap.ui.define([
                     );
 
                     setTimeout(() => {
-                        this.onAfterRendering();
+                        this.onGetCustomValues();
                     }, 500);
                 }).catch(() => {
                     oView.byId("idPluginPanel").setBusy(false);
@@ -404,15 +417,15 @@ sap.ui.define([
                     inWorkCenter: oPODParams.WORK_CENTER
                 }, oSapApi).then(() => {
                     sap.m.MessageToast.show(oBundle.getText("dataClearedSuccess"));
-                    
+
                     // Esperar 500ms y recargar datos desde API
                     setTimeout(() => {
-                        this.onAfterRendering();
+                        this.onGetCustomValues();
                     }, 500);
                 }).catch(() => {
                     sap.m.MessageToast.show(oBundle.getText("errorClearing"));
                     // En caso de error, recargar los datos originales
-                    this.onAfterRendering();
+                    this.onGetCustomValues();
                 });
             }).catch(() => {
                 sap.m.MessageToast.show("Error al obtener datos originales");
@@ -433,6 +446,11 @@ sap.ui.define([
             const oInput = oView.byId("scanInput");
             const loteEscaneado = sLote;
             const materialEscaneado = sMaterial;
+
+            if (gOperationPhase.status !== OPERATION_STATUS.ACTIVE) {
+                sap.m.MessageBox.error(oBundle.getText("verificarStatusOperacion"))
+                return;
+            }
 
             // validacion de material PRIMERO SE HACE LA DEL MATERIAL
             const urlMaterial = this.getPublicApiRestDataSourceUri() + this.ApiPaths.validateMaterialEnOrden;
@@ -456,6 +474,7 @@ sap.ui.define([
                         sap.m.MessageToast.show(msgMat);
                         oInput.setValue("");
                         oInput.focus();
+                        this._slotContext = null;
                         return;
                     }
 
@@ -466,7 +485,8 @@ sap.ui.define([
                         "inLote": loteEscaneado,
                         "inOrden": oPODParams.ORDER_ID,
                         "inSapClient": mandante,
-                        "inMaterial": materialEscaneado
+                        "inMaterial": materialEscaneado,
+                        "inPuesto": oPODParams.WORK_CENTER
                     };
 
                     this.ajaxPostRequest(urlLote, inParamsLote,
@@ -543,9 +563,20 @@ sap.ui.define([
             const oModel = oTable.getModel();
             const aItems = oModel.getProperty("/ITEMS") || [];
 
+            // Extraer material!lote del barcode escaneado (ignorar secuencia si existe)
             const sNormalizado = sBarcode.toUpperCase();
+            const partsEscaneado = sNormalizado.split('!');
+            const materialLoteEscaneado = partsEscaneado.slice(0, 2).join('!'); // solo material!lote
+
+            // Buscar si ya existe un item con el mismo material!lote
             const oExiste = aItems.find(Item => {
-                return (Item.value || "").toString().trim().toUpperCase() === sNormalizado;
+                const valorItem = (Item.value || "").toString().trim().toUpperCase();
+                if (!valorItem) return false;
+                
+                const partsItem = valorItem.split('!');
+                const materialLoteItem = partsItem.slice(0, 2).join('!'); // solo material!lote
+                
+                return materialLoteItem === materialLoteEscaneado;
             });
 
             if (oExiste) {
@@ -562,7 +593,7 @@ sap.ui.define([
                 // Obtener noCarga del input y concatenar al barcode
                 const sNoCarga = oView.byId("noCarga").getValue() || "";
                 const sBarcodeConSecuencia = sNoCarga ? sBarcode + "!" + sNoCarga : sBarcode;
-                
+
                 oEmptySlot.value = sBarcodeConSecuencia; // asignar valor con secuencia
                 oModel.refresh(true);        // refrescar la tabla
                 this._updateProgressIndicator(); // actualizar indicador de progreso
@@ -779,23 +810,42 @@ sap.ui.define([
 
             //comparacion del lote ingresado 
             const sNormalizado = sBarcode.toUpperCase();
+            
+            // Extraer material!lote del barcode escaneado (ignorar secuencia si existe)
+            const partsEscaneado = sNormalizado.split('!');
+            const materialLoteEscaneado = partsEscaneado.slice(0, 2).join('!'); // solo material!lote
 
             //busca si es igual a uno de los items
             const sExiste = aSlots.find((slot, idx) => {
                 if (idx === iIndex) {
                     return false; // ignora el slot actual
                 }
-                return (slot.value || "").toString().trim().toUpperCase() === sNormalizado;
+                const valorSlot = (slot.value || "").toString().trim().toUpperCase();
+                if (!valorSlot) return false;
+                
+                const partsSlot = valorSlot.split('!');
+                const materialLoteSlot = partsSlot.slice(0, 2).join('!'); // solo material!lote
+                
+                return materialLoteSlot === materialLoteEscaneado;
             });
 
             if (sExiste) {
                 sap.m.MessageToast.show(oBundle.getText("barcodeExists", [sBarcode, sExiste.attribute]));
+                this._slotContext = null;
                 return;
             }
+            
             // Si el valor ya es el mismo en esa fila, no actualizar
-            if ((aSlots[iIndex].value || "").toString().trim().toUpperCase() === sNormalizado) {
-                sap.m.MessageToast.show(oBundle.getText("sinCambios"));
-                return;
+            const valorActual = (aSlots[iIndex].value || "").toString().trim().toUpperCase();
+            if (valorActual) {
+                const partsActual = valorActual.split('!');
+                const materialLoteActual = partsActual.slice(0, 2).join('!');
+                
+                if (materialLoteActual === materialLoteEscaneado) {
+                    sap.m.MessageToast.show(oBundle.getText("sinCambios"));
+                    this._slotContext = null;
+                    return;
+                }
             }
 
             // Obtener noCarga del input y concatenar al barcode
@@ -848,7 +898,7 @@ sap.ui.define([
                 }, oSapApi).then(() => {
                     sap.m.MessageToast.show(oBundle.getText("slotActualizado"));
                     this._slotContext = null;
-                    
+
                     // Verificar si la carga está completa
                     this._checkCargaCompleta();
                 }).catch(() => {
@@ -860,9 +910,16 @@ sap.ui.define([
         },
 
         onBeforeRenderingPlugin: function () {
+            this.subscribe("phaseSelectionEvent", this.onPhaseSelectionEventCustom, this);
 
-
-
+        },
+        onPhaseSelectionEventCustom: function (sChannelId, sEventId, oData) {
+            if (this.isEventFiredByThisPlugin(oData)) {
+                return;
+            }
+            gOperationPhase = oData;
+            this.onGetCustomValues();
+            this.onGetOrderCustomValues();
         },
 
         isSubscribingToNotifications: function () {
@@ -915,8 +972,7 @@ sap.ui.define([
                 }.bind(this),
                     function (oRes) {
                         // Error callback
-                        this.clearModel();
-                        resolve("Error")
+                        resolve("Error");
                     }.bind(this));
             });
         },
@@ -927,8 +983,7 @@ sap.ui.define([
                 }.bind(this),
                     function (oRes) {
                         // Error callback
-                        this.clearModel();
-                        resolve("Error")
+                        resolve("Error");
                     }.bind(this));
             });
         },
@@ -1021,7 +1076,7 @@ sap.ui.define([
 
                     // Esperar 500ms para que el backend procese completamente antes de recargar
                     setTimeout(() => {
-                        this.onAfterRendering();
+                        this.onGetCustomValues();
                     }, 500);
 
                 }).catch(() => {
@@ -1094,7 +1149,7 @@ sap.ui.define([
             // Si la carga está completa, mostrar mensaje de éxito
             if (iSlotQty > 0 && iEscaneados === iSlotQty) {
                 sap.m.MessageBox.success(
-                    oBundle.getText("cargaCompletadaMensaje", [sNoCarga, iEscaneados, iSlotQty]) || 
+                    oBundle.getText("cargaCompletadaMensaje", [sNoCarga, iEscaneados, iSlotQty]) ||
                     `Carga #${sNoCarga} completada exitosamente.\n${iEscaneados}/${iSlotQty} lotes escaneados.`,
                     {
                         title: oBundle.getText("cargaCompletadaTitulo") || "¡Carga Completa!"
@@ -1103,9 +1158,38 @@ sap.ui.define([
             }
         },
 
+        /**
+         * Verificar si la cantidad sugerida para la orden está completa
+         */
+        onGetOrderCustomValues: function () {
+            const oView = this.getView();
+            const oPODParams = this.Commons.getPODParams(this.getOwnerComponent());
+
+            var requestJSON = {
+                "plant": oPODParams.PLANT_ID,
+                "order": oPODParams.ORDER_ID
+            };
+
+            var url = this.getPublicApiRestDataSourceUri() + this.ApiPaths.CHARACHTERISTICS;
+            this.ajaxGetRequest(url, requestJSON,
+                function (oResponseData) {
+                    // Extraer el customValue con atributo CT_100035_500 (número de solera)
+                    if (oResponseData && Array.isArray(oResponseData)) {
+                        const oCustomValue = oResponseData.find(cv => cv.attribute === "CT_100035_500");
+                        const sSuggestedQty = oCustomValue ? oCustomValue.value : "0";
+                        oView.byId("slotQtySuggest").setValue(sSuggestedQty);
+                    }
+                },
+                function (oError, sHttpErrorMessage) {
+                    var err = oError || sHttpErrorMessage;
+                    sap.m.MessageToast.show(err);
+                }
+            );
+        },
+
         onExit: function () {
             PluginViewController.prototype.onExit.apply(this, arguments);
-
+            this.unsubscribe("phaseSelectionEvent", this.onPhaseSelectionEventCustom, this);
 
         }
     });

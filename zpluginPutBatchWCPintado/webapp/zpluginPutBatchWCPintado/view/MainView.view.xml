@@ -51,7 +51,10 @@ height="100%">
                     <Input id="noCarga" enabled="false" width="100%" class="sapUiSmallMarginBottom sapUiSmallMarginTop"/>
                
                     <Label text="{i18n>quantity}" class="sapUiSmallMarginEnd sapUiSmallMarginTop sapUiSmallMarginBeginEnd" />
-                    <Input id="slotQty" enabled="false" width="100%" class="sapUiSmallMarginBottom sapUiSmallMarginBeginEnd sapUiSmallMarginTop"/>
+                    <Input id="slotQty" enabled="false" width="100%" class="sapUiSmallMarginBottom sapUiSmallMarginBeginEnd sapUiSmallMarginTop sapUiSmallMarginEnd"/>
+
+                    <Label text="{i18n>SuggestedQuantity}" class="sapUiSmallMarginEnd sapUiSmallMarginTop sapUiSmallMarginBegin" />
+                    <Input id="slotQtySuggest" enabled="false" width="100%" class="sapUiSmallMarginBottom sapUiSmallMarginBeginEnd sapUiSmallMarginTop"/>
                 
                 <VBox width="40%" visible="false">
                     <Label text="{i18n>slotType}" class="sapUiSmallMarginBottom sapUiSmallMarginTop sapUiSmallMarginBeginEnd"/>
