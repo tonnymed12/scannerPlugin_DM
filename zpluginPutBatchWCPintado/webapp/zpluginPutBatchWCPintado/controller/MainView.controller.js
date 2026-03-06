@@ -31,6 +31,20 @@ sap.ui.define([
             this.onGetCustomValues();
             this.onGetOrderCustomValues();
         },
+        _getCurrentOperationStatus: function () {
+            var oPodSelectionModel = this.getPodSelectionModel();
+            var sCurrentStatus = "";
+
+            if (oPodSelectionModel && oPodSelectionModel.selectedPhaseData) {
+                sCurrentStatus = oPodSelectionModel.selectedPhaseData.status || "";
+            }
+
+            if (!sCurrentStatus && gOperationPhase) {
+                sCurrentStatus = gOperationPhase.status || "";
+            }
+
+            return sCurrentStatus;
+        },
         onGetCustomValues: function () {
             const oView = this.getView(),
                 oSapApi = this.getPublicApiRestDataSourceUri(),
@@ -129,7 +143,8 @@ sap.ui.define([
             const aItems = oModel ? oModel.getProperty("/ITEMS") : [];
             const iSlotQty = parseInt(oView.byId("slotQty").getValue() || "0", 10);
 
-            if (gOperationPhase.status !== OPERATION_STATUS.ACTIVE) {
+            const sCurrentStatus = this._getCurrentOperationStatus();
+            if (sCurrentStatus !== OPERATION_STATUS.ACTIVE) {
                 sap.m.MessageBox.error(oBundle.getText("verificarStatusOperacion"))
                 return;
             }
@@ -447,7 +462,8 @@ sap.ui.define([
             const loteEscaneado = sLote;
             const materialEscaneado = sMaterial;
 
-            if (gOperationPhase.status !== OPERATION_STATUS.ACTIVE) {
+            const sCurrentStatus = this._getCurrentOperationStatus();
+            if (sCurrentStatus !== OPERATION_STATUS.ACTIVE) {
                 sap.m.MessageBox.error(oBundle.getText("verificarStatusOperacion"))
                 return;
             }
@@ -910,6 +926,14 @@ sap.ui.define([
         },
 
         onBeforeRenderingPlugin: function () {
+            var oPodSelectionModel = this.getPodSelectionModel();
+            if (oPodSelectionModel && oPodSelectionModel.selectedPhaseData) {
+                var sStatus = oPodSelectionModel.selectedPhaseData.status || "";
+                gOperationPhase = {
+                    status: sStatus
+                };
+            }
+
             this.subscribe("phaseSelectionEvent", this.onPhaseSelectionEventCustom, this);
 
         },
