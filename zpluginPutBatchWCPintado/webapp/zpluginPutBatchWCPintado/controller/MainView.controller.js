@@ -658,10 +658,12 @@ sap.ui.define([
                 }
                 console.log("Custom Values Final:", aCustomValuesFinal);
                 // Update inmediato
+                const sMaterialLote = materialLoteEscaneado || "";
                 this.setCustomValuesPp({
                     inCustomValues: aCustomValuesFinal,
                     inPlant: oPODParams.PLANT_ID,
-                    inWorkCenter: oPODParams.WORK_CENTER
+                    inWorkCenter: oPODParams.WORK_CENTER,
+                    inMaterialLote: sMaterialLote
                 }, oSapApi).then(() => {
                     sap.m.MessageToast.show(oBundle.getText("slotActualizado"));
 
@@ -907,10 +909,12 @@ sap.ui.define([
                     }
                 }
                 console.log(aCustomValuesFinal);
+                const sMaterialLote = materialLoteEscaneado || "";
                 this.setCustomValuesPp({
                     inCustomValues: aCustomValuesFinal,
                     inPlant: oPODParams.PLANT_ID,
-                    inWorkCenter: oPODParams.WORK_CENTER
+                    inWorkCenter: oPODParams.WORK_CENTER,
+                    inMaterialLote: sMaterialLote
                 }, oSapApi).then(() => {
                     sap.m.MessageToast.show(oBundle.getText("slotActualizado"));
                     this._slotContext = null;
