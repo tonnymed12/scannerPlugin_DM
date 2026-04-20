@@ -24,7 +24,6 @@ sap.ui.define([
         onInit: function () {
             PluginViewController.prototype.onInit.apply(this, arguments);
             this.oScanInput = this.byId("scanInput");
-
         },
 
         onAfterRendering: function () {
@@ -254,14 +253,12 @@ sap.ui.define([
 
             // Traer custom values actuales
             this.getWorkCenterCustomValues(sParams, oSapApi).then(oCurrentRes => {
-                const oData = Array.isArray(oCurrentRes) ? oCurrentRes[0] : oCurrentRes;
-                if (!oData) {
+                const aCurrentCV = this._getValidatedCustomValues(oCurrentRes, oBundle);
+                if (!aCurrentCV) {
                     oView.byId("idPluginPanel").setBusy(false);
-                    sap.m.MessageToast.show(oBundle.getText("errorObtenerDatos") || "Error al obtener datos");
                     return;
                 }
 
-                const aCurrentCV = oData.customValues || [];
                 const aEdited = [
                     { attribute: "SLOTQTY", value: iEscaneados.toString() }
                 ];
@@ -377,6 +374,7 @@ sap.ui.define([
             //vaciar los valores manteniendo el attributo
             aItems.forEach(item => {
                 item.value = "";  //se vacia solo el valor 
+                item.loteQty = "";
             });
 
             //se actualiza el modelo de la vista
@@ -406,7 +404,11 @@ sap.ui.define([
             };
             //llamado a la API y traer los originales 
             this.getWorkCenterCustomValues(sParams, oSapApi).then(oOriginalRes => {
-                const aOriginal = oOriginalRes.customValues || [];
+                const aOriginal = this._getValidatedCustomValues(oOriginalRes, oBundle);
+                if (!aOriginal) {
+                    this.onGetCustomValues();
+                    return;
+                }
                 const aEditMap = {};
 
                 //se crea el mapa de los valores editados (los vacioos)
@@ -639,7 +641,10 @@ sap.ui.define([
 
             // trae los customValues originales
             this.getWorkCenterCustomValues(sParams, oSapApi).then(oOriginalRes => {
-                const aOriginal = oOriginalRes.customValues || [];
+                const aOriginal = this._getValidatedCustomValues(oOriginalRes, oBundle);
+                if (!aOriginal) {
+                    return;
+                }
 
                 // combina los custom originales + editados
                 const editedMap = {};
@@ -742,7 +747,10 @@ sap.ui.define([
             const sParams = { plant: oPODParams.PLANT_ID, workCenter: oPODParams.WORK_CENTER };
 
             this.getWorkCenterCustomValues(sParams, oSapApi).then(oOriginalRes => {
-                const aOriginal = oOriginalRes.customValues || [];
+                const aOriginal = this._getValidatedCustomValues(oOriginalRes, oBundle);
+                if (!aOriginal) {
+                    return;
+                }
                 const editedMap = {};
                 aEdited.forEach(item => { editedMap[item.attribute] = item.value; });
 
@@ -894,7 +902,11 @@ sap.ui.define([
 
             // Traer originales y combinar
             this.getWorkCenterCustomValues(sParams, oSapApi).then(oOriginalRes => {
-                const aOriginal = oOriginalRes.customValues || [];
+                const aOriginal = this._getValidatedCustomValues(oOriginalRes, oBundle);
+                if (!aOriginal) {
+                    this._slotContext = null;
+                    return;
+                }
                 const editedMap = {};
                 aEdited.forEach(item => { editedMap[item.attribute] = item.value; });
 
@@ -1004,6 +1016,13 @@ sap.ui.define([
                     }.bind(this));
             });
         },
+        _getValidatedCustomValues: function (oResponseData, oBundle) {
+            if (!oResponseData || oResponseData === "Error" || !Array.isArray(oResponseData.customValues)) {
+                sap.m.MessageToast.show(oBundle.getText("errorObtenerDatos") || "Error al obtener customValues");
+                return null;
+            }
+            return oResponseData.customValues;
+        },
         setCustomValuesPp: function (oParams, oSapApi) {
             return new Promise((resolve) => {
                 this.ajaxPostRequest(oSapApi + this.ApiPaths.putBatchSlotWorkCenter, oParams, function (oRes) {
@@ -1034,13 +1053,11 @@ sap.ui.define([
 
             // Traer custom values actuales
             this.getWorkCenterCustomValues(sParams, oSapApi).then(oCurrentRes => {
-                const oData = Array.isArray(oCurrentRes) ? oCurrentRes[0] : oCurrentRes;
-                if (!oData) {
+                const aCurrentCV = this._getValidatedCustomValues(oCurrentRes, oBundle);
+                if (!aCurrentCV) {
                     oView.byId("idPluginPanel").setBusy(false);
-                    sap.m.MessageToast.show(oBundle.getText("errorObtenerDatos") || "Error al obtener datos");
                     return;
                 }
-                const aCurrentCV = oData.customValues || [];
                 let iNoCargaActual = 0;
 
                 // Buscar NO_CARGA actual (si no viene, asumir 0)
